@@ -77,6 +77,9 @@ def lr_baseline(X, Y, X_test, Y_test, method=None):
 
     Y_pred = clf.predict(X_test)
     precision, recall, fscore, mcc, val_acc = evaluate(Y_test, Y_pred)
+    outcome = [train_acc, train_pre, train_rec, train_fscore, val_acc, precision, recall, fscore]
+    return outcome
+    
     print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f\tT_mcc %.3f'
           % (train_acc, train_pre, train_rec, train_fscore, train_mcc))
     print('V_acc  %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f\tV_mcc %.3f'
@@ -94,6 +97,9 @@ def knn_baseline(X, Y, X_test, Y_test, method=None):
 
     Y_pred = clf.predict(X_test)
     precision, recall, fscore, mcc, val_acc = evaluate(Y_test, Y_pred)
+    outcome = [train_acc, train_pre, train_rec, train_fscore, val_acc, precision, recall, fscore]
+    return outcome
+    
     print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f\tT_mcc %.3f'
           % (train_acc, train_pre, train_rec, train_fscore, train_mcc))
     print('V_acc  %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f\tV_mcc %.3f'
@@ -111,6 +117,9 @@ def svm_baseline(X, Y, X_test, Y_test, method=None):
 
     Y_pred = clf.predict(X_test)
     precision, recall, fscore, mcc, val_acc = evaluate(Y_test, Y_pred)
+    outcome = [train_acc, train_pre, train_rec, train_fscore, val_acc, precision, recall, fscore]
+    return outcome
+    
     print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f\tT_mcc %.3f'
           % (train_acc, train_pre, train_rec, train_fscore, train_mcc))
     print('V_acc  %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f\tV_mcc %.3f'
@@ -128,6 +137,9 @@ def rf_baseline(X, Y, X_test, Y_test):
 
     Y_pred = clf.predict(X_test)
     precision, recall, fscore, mcc, val_acc = evaluate(Y_test, Y_pred)
+    outcome = [train_acc, train_pre, train_rec, train_fscore, val_acc, precision, recall, fscore]
+    return outcome
+    
     print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f\tT_mcc %.3f'
           % (train_acc, train_pre, train_rec, train_fscore, train_mcc))
     print('V_acc  %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f\tV_mcc %.3f'
@@ -145,6 +157,9 @@ def nn_baseline(X, Y, X_test, Y_test):
 
     Y_pred = clf.predict(X_test)
     precision, recall, fscore, mcc, val_acc = evaluate(Y_test, Y_pred)
+    outcome = [train_acc, train_pre, train_rec, train_fscore, val_acc, precision, recall, fscore]
+    return outcome
+    
     print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f\tT_mcc %.3f'
           % (train_acc, train_pre, train_rec, train_fscore, train_mcc))
     print('V_acc  %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f\tV_mcc %.3f'
@@ -180,16 +195,15 @@ class VGG(nn.Module):
     def __init__(self, model):
         super(VGG, self).__init__()
         self.conv_layer = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.resnext_layer = nn.Sequential(*list(model.children())[1:-2])
-        self.Linear_layer1 = nn.Linear(377600, 256)  # need edition during different segments' training !!!
-        self.Linear_layer2 = nn.Linear(256, 2)
+        self.resnext_layer = nn.Sequential(*list(model.children())[1:-1])
+        #self.Linear_layer1 = nn.Linear(377600, 256)  # need edition during different segments' training !!!
+        self.Linear_layer2 = nn.Linear(3136, 2)
         self.dropout = nn.Dropout(p=0.1)
 
     def forward(self, x):
         x = self.conv_layer(x)
         x = self.resnext_layer(x)
         x = x.view(x.size(0), -1)
-        x = self.Linear_layer1(x)
         out = self.Linear_layer2(x)
         out = self.dropout(out)
         return out
@@ -202,7 +216,7 @@ class ResNet(nn.Module):
         self.Linear_layer1 = nn.Linear(512, 256)
         self.Linear_layer2 = nn.Linear(256, 2)
         # self.Linear_layer3 = nn.Linear(256, 2)
-        self.dropout = nn.Dropout(p=0.4)
+        self.dropout = nn.Dropout(p=0.6)
 
     def forward(self, x):
         x = self.conv_layer(x)
@@ -221,7 +235,7 @@ class ResNext(nn.Module):
         self.resnext_layer = nn.Sequential(*list(model.children())[1:-1])
         self.Linear_layer1 = nn.Linear(2048, 256)
         self.Linear_layer2 = nn.Linear(256, 2)
-        self.dropout = nn.Dropout(p=0.4)
+        self.dropout = nn.Dropout(p=0.5)
 
     def forward(self, x):
         x = self.conv_layer(x)

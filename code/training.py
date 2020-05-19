@@ -32,6 +32,7 @@ from train_cnn import train_cnn
 from validation import evaluate
 from train_cnn import calculate_prob
 from train_cnn import predictions_from_output
+from sklearn.model_selection import StratifiedKFold
 
 sys.path.append(os.path.abspath('/content/drive/Colab Notebooks/NTU/code5'))
 warnings.filterwarnings('ignore')
@@ -45,13 +46,13 @@ def get_index():
     '''
     Ensure all segments' samples indexs  are the same
     '''
-    HA_data = xlrd.open_workbook("SEG1.xlsx")  # file path
+    HA_data = xlrd.open_workbook("HA_data_with_site.xlsx")  # file path
     HA_data = HA_data.sheet_by_index(0)
     raw_feature, raw_label = data_transform(HA_data, 2)  # transform raw data
     feature, label = cnn_training_data(raw_feature, raw_label, 2)
 
     global index
-    setup_seed(20)  # change seed
+    setup_seed(14)  # change seed
 
     shuffled_index = np.arange(len(feature))
     random.shuffle(shuffled_index)
@@ -75,7 +76,7 @@ def gradAscent(dataMatIn, classLabels):
     # labelMat = mat(classLabels).T
     m, n = np.shape(dataMatrix)
     alpha = 0.001  # learning rate
-    maxCycles = 1500  # num of iterations
+    maxCycles = 2500  # num of iterations
     weights = np.ones((n, 1))
     for cycle in range(maxCycles):
         h = sigmoid(dataMatrix * weights)
@@ -109,13 +110,16 @@ def main():
         'dropout_p': 0.5,
 
         # Note, no learning rate decay implemented
-        'learning_rate': 0.0005,
+        'learning_rate': 0.0005,# 0.0005 resnet resnext
 
         # Size of mini batch
-        'batch_size': 16,
+        'batch_size': 4,
 
         # Number of training iterations
-        'num_of_epochs': 50
+        'num_of_epochs': 100,
+        
+        # Number of cross validation
+        'split_num': 4
     }
 
     shuffled_index = get_index()
@@ -124,974 +128,1704 @@ def main():
         subtype = 'PB2'
         setup_seed(14)
         # read raw sequence data
-        HA_data = xlrd.open_workbook("SEG1.xlsx")  # file path
+        HA_data = xlrd.open_workbook("PB2_data_with_site.xlsx")  # file path
         HA_data = HA_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(HA_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + PB2:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + PB2:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + PB2:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + PB2:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + PB2:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + PB2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + PB2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + PB2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 4:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + PB2:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + PB2:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + PB2:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + PB2:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + PB2:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + PB2:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + PB2:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")          
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + PB2:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'PB1':
         subtype = 'PB1'
         setup_seed(14)
         # read raw sequence data
-        PB1_data = xlrd.open_workbook("SEG2.xlsx")  # file path
+        PB1_data = xlrd.open_workbook("PB1_data_with_site.xlsx")  # file path
         PB1_data = PB1_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(PB1_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + PB1:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + PB1:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + PB1:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + PB1:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + PB1:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + PB1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + PB1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + PB1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 4:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + PB1:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + PB1:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + PB1:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + PB1:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + PB1:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + PB1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + PB1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + PB1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'PA':
         subtype = 'PA'
         setup_seed(14)
         # read raw sequence data
-        PA_data = xlrd.open_workbook("SEG3.xlsx")  # file path
+        PA_data = xlrd.open_workbook("PA_data_with_site.xlsx")  # file path
         PA_data = PA_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(PA_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + PA:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + PA:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + PA:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + PA:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + PA:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + PA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + PA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + PA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 4:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + PA:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + PA:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + PA:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + PA:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + PA:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + PA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + PA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + PA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'PAX':
         subtype = 'PAX'
         setup_seed(14)
         # read raw sequence data
-        PA_data = xlrd.open_workbook("SEG3p2.xlsx")  # file path
+        PA_data = xlrd.open_workbook("PAX_data_with_site.xlsx")  # file path
         PA_data = PA_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(PA_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + PAX:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + PAX:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + PAX:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + PAX:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + PAX:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + PAX:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + PAX:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + PAX:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], 0.0001, parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold")
+            train_x = np.array(feature)[train_index].tolist()
+            test_x = np.array(feature)[test_index].tolist()
+            train_y = np.array(label)[train_index].tolist()
+            test_y = np.array(label)[test_index].tolist()
+            #print(test_y[0:15])
+    
+            if baseline == 'rf_baseline':
+                print('rf_baseline + PAX:')
+                outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'lr_baseline':
+                print('lr_baseline + PAX:')
+                outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'svm_baseline':
+                print('svm_baseline + PAX:')
+                outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'knn_baseline':
+                print('knn_baseline + PAX:')
+                outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'nn_baseline':
+                print('nn_baseline + PAX:')
+                outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'vgg':
+                print('VGG + PAX:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = VGG(models.vgg16_bn(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'res':
+                print('ResNet + PAX:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = ResNet(resnet34(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'resx':
+                print('ResNext + PAX:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = ResNext(models.resnext50_32x4d(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'HA':
         subtype = 'HA'
         setup_seed(14)
         # read raw sequence data
-        HA_data = xlrd.open_workbook("SEG4.xlsx")  # file path
+        HA_data = xlrd.open_workbook("HA_data_with_site.xlsx")  # file path
         HA_data = HA_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(HA_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + HA:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + HA:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + HA:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + HA:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + HA:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + HA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + HA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + HA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 3:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + HA:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + HA:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + HA:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + HA:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + HA:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + HA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + HA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + HA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'NP':
         subtype = 'NP'
         setup_seed(14)
         # read raw sequence data
-        NP_data = xlrd.open_workbook("SEG5.xlsx")  # file path
+        NP_data = xlrd.open_workbook("NP_data_with_site.xlsx")  # file path
         NP_data = NP_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(NP_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + NP:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + NP:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + NP:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + NP:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + NP:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + NP:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + NP:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + NP:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 1:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + NP:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + NP:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + NP:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + NP:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + NP:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + NP:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + NP:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + NP:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'NA':
         subtype = 'NA'
         setup_seed(14)
         # read raw sequence data
-        NA_data = xlrd.open_workbook("SEG6.xlsx")  # file path
+        NA_data = xlrd.open_workbook("NA_data_with_site.xlsx")  # file path
         NA_data = NA_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(NA_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + NA:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + NA:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + NA:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + NA:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + NA:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + NA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + NA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + NA:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 3:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + NA:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + NA:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + NA:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + NA:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + NA:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + NA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + NA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + NA:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'M1':
         subtype = 'M1'
         setup_seed(14)
         # read raw sequence data
-        M1_data = xlrd.open_workbook("SEG7.xlsx")  # file path
+        M1_data = xlrd.open_workbook("M1_data_with_site.xlsx")  # file path
         M1_data = M1_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(M1_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + M1:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + M1:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + M1:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + M1:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + M1:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + M1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + M1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + M1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 4:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + M1:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + M1:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + M1:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + M1:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + M1:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + M1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + M1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + M1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'M2':
         subtype = 'M2'
         setup_seed(14)
         # read raw sequence data
-        M1_data = xlrd.open_workbook("SEG7p2.xlsx")  # file path
+        M1_data = xlrd.open_workbook("M2_data_with_site.xlsx")  # file path
         M1_data = M1_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(M1_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + M2:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + M2:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + M2:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + M2:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + M2:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + M2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + M2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + M2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], 0.00005, 16, train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold")
+            train_x = np.array(feature)[train_index].tolist()
+            test_x = np.array(feature)[test_index].tolist()
+            train_y = np.array(label)[train_index].tolist()
+            test_y = np.array(label)[test_index].tolist()
+            #print(test_y[0:15])
+    
+            if baseline == 'rf_baseline':
+                print('rf_baseline + M2:')
+                outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'lr_baseline':
+                print('lr_baseline + M2:')
+                outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'svm_baseline':
+                print('svm_baseline + M2:')
+                outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'knn_baseline':
+                print('knn_baseline + M2:')
+                outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'nn_baseline':
+                print('nn_baseline + M2:')
+                outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'vgg':
+                print('VGG + M2:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = VGG(models.vgg16_bn(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'res':
+                print('ResNet + M2:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = ResNet(resnet34(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'resx':
+                print('ResNext + M2:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = ResNext(models.resnext50_32x4d(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'NS1':
         subtype = 'NS1'
         setup_seed(14)
         # read raw sequence data
-        NS1_data = xlrd.open_workbook("SEG8.xlsx")  # file path
+        NS1_data = xlrd.open_workbook("NS1_data_with_site.xlsx")  # file path
         NS1_data = NS1_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(NS1_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + NS1:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + NS1:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + NS1:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + NS1:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + NS1:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + NS1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + NS1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + NS1:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        flag = 1
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold", flag)
+            if flag != 1:
+                flag = flag + 1
+                pass
+            else:
+                flag = flag + 1
+                train_x = np.array(feature)[train_index].tolist()
+                test_x = np.array(feature)[test_index].tolist()
+                train_y = np.array(label)[train_index].tolist()
+                test_y = np.array(label)[test_index].tolist()
+                #print(test_y[0:15])
+        
+                if baseline == 'rf_baseline':
+                    print('rf_baseline + NS1:')
+                    outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'lr_baseline':
+                    print('lr_baseline + NS1:')
+                    outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'svm_baseline':
+                    print('svm_baseline + NS1:')
+                    outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'knn_baseline':
+                    print('knn_baseline + NS1:')
+                    outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'nn_baseline':
+                    print('nn_baseline + NS1:')
+                    outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'vgg':
+                    print('VGG + NS1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = VGG(models.vgg16_bn(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'res':
+                    print('ResNet + NS1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNet(resnet34(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+                elif baseline == 'resx':
+                    print('ResNext + NS1:')
+                    train_x = np.reshape(train_x, (
+                        np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                    test_x = np.reshape(test_x,
+                                        (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                    #print(np.array(train_x).shape)
+                    #print(np.array(test_x).shape)
+        
+                    train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                    train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                    test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                    test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                    net = ResNext(models.resnext50_32x4d(pretrained=True))
+                    if torch.cuda.is_available():
+                        print('running with GPU')
+                        net.cuda()
+        
+                    outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                              train_y, test_x, test_y, subtype)
+                    print("############################ Best_outcome... ##################################")
+                    print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                        outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                    print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                        outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                    outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
     if parameters['segment'] == 'NS2':
         subtype = 'NS2'
         setup_seed(14)
         # read raw sequence data
-        NS1_data = xlrd.open_workbook("SEG8p2.xlsx")  # file path
+        NS1_data = xlrd.open_workbook("NS2_data_with_site.xlsx")  # file path
         NS1_data = NS1_data.sheet_by_index(0)
         raw_feature, raw_label = data_transform(NS1_data, parameters['vir_class'])  # transform raw data
         feature, label = cnn_training_data(raw_feature, raw_label, parameters['vir_class'])  # feature engineering
-        train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
-        print(test_y[0:15])
-
-        if baseline == 'rf_baseline':
-            print('rf_baseline + NS2:')
-            rf_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'lr_baseline':
-            print('lr_baseline + NS2:')
-            lr_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'svm_baseline':
-            print('svm_baseline + NS2:')
-            svm_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'knn_baseline':
-            print('knn_baseline + NS2:')
-            knn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'nn_baseline':
-            print('nn_baseline + NS2:')
-            nn_baseline(reshape_to_linear(train_x), train_y, reshape_to_linear(test_x), test_y)
-        elif baseline == 'vgg':
-            print('VGG + NS2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = VGG(models.vgg16_bn(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'res':
-            print('ResNet + NS2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNet(resnet34(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
-                      train_y, test_x, test_y, subtype)
-        elif baseline == 'resx':
-            print('ResNext + NS2:')
-            train_x = np.reshape(train_x, (
-                np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
-            test_x = np.reshape(test_x,
-                                (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
-            print(np.array(train_x).shape)
-            print(np.array(test_x).shape)
-
-            train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
-            train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
-            test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
-            test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
-            net = ResNext(models.resnext101_32x8d(pretrained=True))
-            if torch.cuda.is_available():
-                print('running with GPU')
-                net.cuda()
-
-            train_cnn(net, parameters['num_of_epochs'], 0.00005, 16, train_x,
-                      train_y, test_x, test_y, subtype)
+        stratified_folder = StratifiedKFold(n_splits=parameters['split_num'], random_state=2, shuffle=False)
+        outcome = []
+        for train_index, test_index in stratified_folder.split(feature, label):
+            print("New Fold")
+            train_x = np.array(feature)[train_index].tolist()
+            test_x = np.array(feature)[test_index].tolist()
+            train_y = np.array(label)[train_index].tolist()
+            test_y = np.array(label)[test_index].tolist()
+            #print(test_y[0:15])
+    
+            if baseline == 'rf_baseline':
+                print('rf_baseline + NS2:')
+                outcome_tp = rf_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'lr_baseline':
+                print('lr_baseline + NS2:')
+                outcome_tp = lr_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'svm_baseline':
+                print('svm_baseline + NS2:')
+                outcome_tp = svm_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'knn_baseline':
+                print('knn_baseline + NS2:')
+                outcome_tp = knn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'nn_baseline':
+                print('nn_baseline + NS2:')
+                outcome_tp = nn_baseline(reshape_to_linear(np.array(train_x)), np.array(train_y), reshape_to_linear(np.array(test_x)), np.array(test_y))
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'vgg':
+                print('VGG + NS2:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = VGG(models.vgg16_bn(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'res':
+                print('ResNet + NS2:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = ResNet(resnet34(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+            elif baseline == 'resx':
+                print('ResNext + NS2:')
+                train_x = np.reshape(train_x, (
+                    np.array(train_x).shape[0], 1, np.array(train_x).shape[1], np.array(train_x).shape[2]))
+                test_x = np.reshape(test_x,
+                                    (np.array(test_x).shape[0], 1, np.array(test_x).shape[1], np.array(test_x).shape[2]))
+                #print(np.array(train_x).shape)
+                #print(np.array(test_x).shape)
+    
+                train_x = torch.tensor(train_x, dtype=torch.float32).cuda()
+                train_y = torch.tensor(train_y, dtype=torch.int64).cuda()
+                test_x = torch.tensor(test_x, dtype=torch.float32).cuda()
+                test_y = torch.tensor(test_y, dtype=torch.int64).cuda()
+                net = ResNext(models.resnext50_32x4d(pretrained=True))
+                if torch.cuda.is_available():
+                    print('running with GPU')
+                    net.cuda()
+    
+                outcome_tp = train_cnn(net, parameters['num_of_epochs'], parameters['learning_rate'], parameters['batch_size'], train_x,
+                          train_y, test_x, test_y, subtype)
+                print("############################ Best_outcome... ##################################")
+                print('T_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f' % (
+                    outcome_tp[0], outcome_tp[1], outcome_tp[2], outcome_tp[3]))
+                print('V_acc %.3f\tV_pre %.3f\tV_rec %.3f\tV_fscore %.3f' % (
+                    outcome_tp[4], outcome_tp[5], outcome_tp[6], outcome_tp[7]))
+                outcome.append(outcome_tp)
+        outcome_final = np.mean(np.array(outcome), axis=0)
+        outcome_std = np.std(np.array(outcome), axis=0)
+        print("########################### Average_outcome... ################################")
+        print('T_acc %.3f(%.3f)\tT_pre %.3f(%.3f)\tT_rec %.3f(%.3f)\tT_fscore %.3f(%.3f)' % (
+                    outcome_final[0], outcome_std[0], outcome_final[1], outcome_std[1], outcome_final[2], outcome_std[2], outcome_final[3], outcome_std[3]))
+        print('V_acc %.3f(%.3f)\tV_pre %.3f(%.3f)\tV_rec %.3f(%.3f)\tV_fscore %.3f(%.3f)' % (
+                    outcome_final[4], outcome_std[4], outcome_final[5], outcome_std[5], outcome_final[6], outcome_std[6], outcome_final[7], outcome_std[7]))
 
 
 if __name__ == '__main__':
 
-    print("plot....")
+    print("plot...")
 
     segment_type = ['PB2', 'PB1', 'PA', 'PAX', 'HA', 'NP', 'NA', 'M1', 'M2', 'NS1', 'NS2']
-    baselines = ['svm_baseline', 'rf_baseline', 'lr_baseline', 'knn_baseline', 'nn_baseline', 'res', 'resx', 'vgg']
-    # baselines = ['vgg']
+    baselines = ['resx']
+    # baselines = ['rf_baseline', 'lr_baseline', 'knn_baseline', 'nn_baseline']
     for baseline in baselines:
-        for i in [0, 1, 2, 4, 5, 6, 7, 9]:
+        for i in [7, 9]:# 0, 1, 2, 4, 5, 6, 7, 9
             segment = segment_type[i]
             main()
 
 
-    ############### Ensemble model based on ResNeXt-101 ######################
+    ############### Ensemble model based on ResNeXt-50 ######################
     class ResNext(nn.Module):
         def __init__(self, model):
             super(ResNext, self).__init__()
@@ -1109,9 +1843,27 @@ if __name__ == '__main__':
             out = self.Linear_layer2(x)
             out = self.dropout(out)
             return out
+    class ResNet(nn.Module):
+        def __init__(self, model):
+            super(ResNet, self).__init__()
+            self.conv_layer = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.resnet_layer = nn.Sequential(*list(model.children())[1:-1])
+            self.Linear_layer1 = nn.Linear(512, 256)
+            self.Linear_layer2 = nn.Linear(256, 2)
+            # self.Linear_layer3 = nn.Linear(256, 2)
+            self.dropout = nn.Dropout(p=0.4)
+    
+        def forward(self, x):
+            x = self.conv_layer(x)
+            x = self.resnet_layer(x)
+            x = x.view(x.size(0), -1)
+            x = self.Linear_layer1(x)
+            out = self.Linear_layer2(x)
+            out = self.dropout(out)
+            return out
 
-
-    model1 = ResNext(models.resnext101_32x8d())
+    model1 = ResNext(models.resnext50_32x4d())
+    #model1 = ResNet(resnet34())
 
     shuffled_index = index
 
@@ -1120,7 +1872,7 @@ if __name__ == '__main__':
             subtype = 'PB2'
             # setup_seed(7)
             # read raw sequence data
-            PB2_data = xlrd.open_workbook("SEG1.xlsx")  # file path
+            PB2_data = xlrd.open_workbook("PB2_data_with_site.xlsx")  # file path
             PB2_data = PB2_data.sheet_by_index(0)
             raw_feature, raw_label = data_transform(PB2_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1154,7 +1906,7 @@ if __name__ == '__main__':
             subtype = 'PB1'
             # setup_seed(7)
             # read raw sequence data
-            PB1_data = xlrd.open_workbook("SEG2.xlsx")  # file path
+            PB1_data = xlrd.open_workbook("PB1_data_with_site.xlsx")  # file path
             PB1_data = PB1_data.sheet_by_index(0)
             raw_feature, raw_label = data_transform(PB1_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1189,9 +1941,9 @@ if __name__ == '__main__':
             subtype = 'PA'
             # setup_seed(7)
             # read raw sequence data
-            PB1_data = xlrd.open_workbook("SEG3.xlsx")  # file path
-            PB1_data = PB1_data.sheet_by_index(0)
-            raw_feature, raw_label = data_transform(PB1_data, 2)  # transform raw data
+            PA_data = xlrd.open_workbook("PA_data_with_site.xlsx")  # file path
+            PA_data = PA_data.sheet_by_index(0)
+            raw_feature, raw_label = data_transform(PA_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
             train_x, test_x, train_y, test_y = train_test_split_data(feature, label, 0.2, shuffled_index)
 
@@ -1261,7 +2013,7 @@ if __name__ == '__main__':
             # subtype = 'HA'
             setup_seed(7)
             # read raw sequence data
-            HA_data = xlrd.open_workbook("SEG4.xlsx")  # file path
+            HA_data = xlrd.open_workbook("HA_data_with_site.xlsx")  # file path
             HA_data = HA_data.sheet_by_index(0)
             raw_feature, raw_label = data_transform(HA_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1295,7 +2047,7 @@ if __name__ == '__main__':
             subtype = 'NP'
             # setup_seed(7)
             # read raw sequence data
-            NP_data = xlrd.open_workbook("SEG5.xlsx")  # file path
+            NP_data = xlrd.open_workbook("NP_data_with_site.xlsx")  # file path
             NP_data = NP_data.sheet_by_index(0)
             raw_feature, raw_label = data_transform(NP_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1329,7 +2081,7 @@ if __name__ == '__main__':
             subtype = 'NA'
             # setup_seed(7)
             # read raw sequence data
-            NA_data = xlrd.open_workbook("SEG6.xlsx")  # file path
+            NA_data = xlrd.open_workbook("NA_data_with_site.xlsx")  # file path
             NA_data = NA_data.sheet_by_index(0)
             raw_feature, raw_label = data_transform(NA_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1363,7 +2115,7 @@ if __name__ == '__main__':
             subtype = 'M1'
             # setup_seed(7)
             # read raw sequence data
-            M1_data = xlrd.open_workbook("SEG7.xlsx")  # file path
+            M1_data = xlrd.open_workbook("M1_data_with_site.xlsx")  # file path
             M1_data = M1_data.sheet_by_index(0)
             raw_feature, raw_label = data_transform(M1_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1397,7 +2149,7 @@ if __name__ == '__main__':
             subtype = 'NS1'
             # setup_seed(7)
             # read raw sequence data
-            NS1_data = xlrd.open_workbook("SEG8.xlsx")  # file path
+            NS1_data = xlrd.open_workbook("NS1_data_with_site.xlsx")  # file path
             NS1_data = NS1_data.sheet_by_index(0)
             raw_feature, raw_label = data_transform(NS1_data, 2)  # transform raw data
             feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1429,7 +2181,7 @@ if __name__ == '__main__':
                 prediction9_t = torch.from_numpy(prediction9.cpu().numpy().reshape(-1, 1))
 
     ###### loading dataset ######
-    NS1_data = xlrd.open_workbook("SEG8.xlsx")  # file path
+    NS1_data = xlrd.open_workbook("NS1_data_with_site.xlsx")  # file path
     NS1_data = NS1_data.sheet_by_index(0)
     raw_feature, raw_label = data_transform(NS1_data, 2)  # transform raw data
     feature, label = cnn_training_data(raw_feature, raw_label, 2)  # feature engineering
@@ -1474,7 +2226,7 @@ if __name__ == '__main__':
     # plt.xlim(0, 0.8)
     plt.ylim(0, 1)
     plt.plot([0, 1], [0, 1], 'k--')
-    plt.plot(fpr_cnn, tpr_cnn, label="VirPreNet")
+    plt.plot(fpr_cnn, tpr_cnn, label = "VirPreNet(" + str(auc(fpr_cnn, tpr_cnn)).split('.')[0] + '.' + str(auc(fpr_cnn, tpr_cnn)).split('.')[1][:3] + ")")
     plt.legend(loc='best')
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
