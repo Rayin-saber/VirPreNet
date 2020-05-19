@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 import math
 import time
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 from validation import get_confusion_matrix
@@ -97,7 +98,7 @@ def train_cnn(model, epochs, learning_rate, batch_size, X, Y, X_test, Y_test, su
     else:
         Weight_Decay = 0.001
 
-    for i in range(1):  # define different optimizers
+    for i in range(5):  # define different optimizers
 
         if i == 0:
             optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=Weight_Decay)
@@ -105,23 +106,22 @@ def train_cnn(model, epochs, learning_rate, batch_size, X, Y, X_test, Y_test, su
             print("SGD")
             Color = 'r'
         elif i == 1:
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.0005, weight_decay=Weight_Decay)
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=Weight_Decay)
             op_title = 'Adam'
             print("Adam")
             Color = 'b'
         elif i == 2:
-            optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, weight_decay=Weight_Decay)
+            optimizer = torch.optim.RMSprop(model.parameters(), lr=0.0001, weight_decay=Weight_Decay)
             op_title = 'RMSprop'
             print("RMSprop")
             Color = 'g'
         elif i == 3:
-            optimizer = torch.optim.Adadelta(model.parameters(), lr=0.0005, rho=0.9, eps=1e-06,
-                                             weight_decay=Weight_Decay)
+            optimizer = torch.optim.Adadelta(model.parameters(), lr=0.005, weight_decay=Weight_Decay)
             op_title = 'Adadelta'
             print("Adadelta")
             Color = 'c'
         elif i == 4:
-            optimizer = torch.optim.Adagrad(model.parameters(), lr=0.0005, weight_decay=Weight_Decay)
+            optimizer = torch.optim.Adagrad(model.parameters(), lr=0.005, weight_decay=Weight_Decay)
             op_title = 'Adagrad'
             print("Adagrad")
             Color = 'y'
@@ -233,22 +233,25 @@ def train_cnn(model, epochs, learning_rate, batch_size, X, Y, X_test, Y_test, su
                 all_val_losses.append(val_loss)
                 all_val_accs.append(val_acc)
 
-                if val_acc > best_acc:
+                if val_acc > best_acc and (val_acc < epoch_acc + 0.01):
                     torch.save(model.state_dict(), str(subtype) + '_params.pkl')
                     print("Higher accuracy, New best ", subtype, " model saved.")
                     best_epoch = epoch
                     best_pred_prob = pred_prob
                     best_acc = val_acc
                     best_loss = val_loss
-                elif (val_acc == best_acc) and (val_loss < best_loss):
+                    best_outcome = [epoch_acc, epoch_pre, epoch_rec, epoch_fscore, val_acc, precision, recall, fscore]
+                elif (val_acc == best_acc) and (val_loss < best_loss) and (val_acc < epoch_acc + 0.01):
                     torch.save(model.state_dict(), str(subtype) + '_params.pkl')
                     print("Lower loss, New best ", subtype, " model saved.")
                     best_epoch = epoch
                     best_pred_prob = pred_prob
                     best_acc = val_acc
                     best_loss = val_loss
+                    best_outcome = [epoch_acc, epoch_pre, epoch_rec, epoch_fscore, val_acc, precision, recall, fscore]
 
             if (epoch + 1) % print_interval == 0:
+                print("Epoch: ", epoch)
                 print('Epoch %d Time %s' % (epoch, get_time_string(elapsed_time)))
                 print('T_loss %.3f\tT_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f\tT_mcc %.3f' % (
                     epoch_loss, epoch_acc, epoch_pre, epoch_rec, epoch_fscore, epoch_mcc))
@@ -258,30 +261,32 @@ def train_cnn(model, epochs, learning_rate, batch_size, X, Y, X_test, Y_test, su
         print(best_epoch)
         fpr_cnn, tpr_cnn, _ = roc_curve(Y_test.cpu(), best_pred_prob.cpu())
         print(subtype, "/'s auc:", auc(fpr_cnn, tpr_cnn))
+        '''
         plt.figure(1)
         # plt.xlim(0, 0.8)
         plt.ylim(0, 1)
         plt.plot([0, 1], [0, 1], 'k--')
-        plt.plot(fpr_cnn, tpr_cnn, label=subtype)
-    plt.legend(loc='best')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.savefig("ROC.eps", format="eps", dpi=300)
-
-
-'''
+        plt.plot(fpr_cnn, tpr_cnn, label = "ResNeXt-" + subtype + "(" + str(auc(fpr_cnn, tpr_cnn)).split('.')[0] + '.' + str(auc(fpr_cnn, tpr_cnn)).split('.')[1][:3] + ")")
+        '''
     ############################# save optimizer figure #########################
         plt.plot(np.arange(epochs),all_val_accs,lw = 0.8, color=Color,label=op_title) 
         print(op_title, " is done!")
-    plt.xlabel('epochs') 
-    plt.ylabel('validation accuracy')   
+    plt.xlabel('Epochs') 
+    plt.ylabel('Validation Accuracy')   
     #plt.title("")      
     plt.legend()            
-    plt.ylim((0,0.85))
+    plt.ylim((0,0.75))
     plt.grid() 
     filename = "test_" + str(subtype) + ".eps"
     plt.savefig(filename, format = "eps", dpi=300)  
     print(str(subtype), " is done!")
     plt.clf()
     #plt.show()
-'''
+    '''
+    plt.legend(loc='best')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.savefig("ROC.eps", format="eps", dpi=300)
+    '''
+    return best_outcome
+
