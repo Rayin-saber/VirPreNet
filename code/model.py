@@ -41,14 +41,16 @@ def reshape_to_linear(x):
 
 
 # split data into training and testing
-def train_test_split_data(feature, label, split_ratio, shuffled_index):
-    setup_seed(20)
+def train_test_split_data(feature, label, split_ratio, shuffled_flag):
+    setup_seed(18)
     train_x, test_x, train_y, test_y = [], [], [], []
     feature_new, label_new = [], []
     num_of_training = int(math.floor(len(feature) * (1 - split_ratio)))
-
-    #shuffled_index = np.arange(len(feature))
-    #random.shuffle(shuffled_index)
+    if shuffled_flag == True:
+        shuffled_index = np.arange(len(feature))
+        random.shuffle(shuffled_index)
+    else:
+        shuffled_index = np.arange(len(feature))
     for i in range(0, len(feature)):
         feature_new.append(feature[shuffled_index[i]])
         label_new.append(label[shuffled_index[i]])

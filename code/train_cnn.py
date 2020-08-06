@@ -98,7 +98,7 @@ def train_cnn(model, epochs, learning_rate, batch_size, X, Y, X_test, Y_test, su
     else:
         Weight_Decay = 0.001
 
-    for i in range(5):  # define different optimizers
+    for i in range(1):  # define different optimizers
 
         if i == 0:
             optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=Weight_Decay)
@@ -251,7 +251,7 @@ def train_cnn(model, epochs, learning_rate, batch_size, X, Y, X_test, Y_test, su
                     best_outcome = [epoch_acc, epoch_pre, epoch_rec, epoch_fscore, val_acc, precision, recall, fscore]
 
             if (epoch + 1) % print_interval == 0:
-                print("Epoch: ", epoch)
+                #print("Epoch: ", epoch)
                 print('Epoch %d Time %s' % (epoch, get_time_string(elapsed_time)))
                 print('T_loss %.3f\tT_acc %.3f\tT_pre %.3f\tT_rec %.3f\tT_fscore %.3f\tT_mcc %.3f' % (
                     epoch_loss, epoch_acc, epoch_pre, epoch_rec, epoch_fscore, epoch_mcc))
